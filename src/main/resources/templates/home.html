@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home - OAuth Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+        }
+        
+        .avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 48px;
+            color: white;
+            font-weight: bold;
+            overflow: hidden;
+            border: 4px solid white;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .email {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        
+        .info-card {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .info-value {
+            color: #666;
+        }
+        
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-logout {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-logout:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.4);
+        }
+        
+        .success-badge {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        
+        .provider-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: 600;
+            margin: 2px;
+        }
+        
+        .badge-google { background: #db4437; color: white; }
+        .badge-facebook { background: #4267B2; color: white; }
+        .badge-github { background: #333; color: white; }
+        .badge-tiktok { 
+            background: linear-gradient(135deg, #00f2ea 0%, #ff0050 100%); 
+            color: white; 
+        }
+        .badge-local { background: #667eea; color: white; }
+        
+        .providers-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            justify-content: flex-end;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="success-badge">✓ Login realizado com sucesso!</div>
+        
+        <!-- Avatar com foto ou inicial -->
+        <div class="avatar">
+            <img th:if="${photoUrl != null and !photoUrl.isEmpty()}" 
+                 th:src="${photoUrl}" 
+                 th:alt="${name}"
+                 onerror="this.style.display='none'; this.parentElement.innerHTML = this.parentElement.getAttribute('data-initial');"
+                 th:attr="data-initial=${#strings.substring(name, 0, 1).toUpperCase()}">
+            <span th:if="${photoUrl == null or photoUrl.isEmpty()}" 
+                  th:text="${#strings.substring(name, 0, 1).toUpperCase()}">U</span>
+        </div>
+        
+        <h1>
+            <span th:text="${name}">Nome do Usuário</span>
+            <span class="provider-badge" 
+                  th:classappend="${currentProvider == 'GOOGLE'} ? 'badge-google' : (${currentProvider == 'FACEBOOK'} ? 'badge-facebook' : (${currentProvider == 'GITHUB'} ? 'badge-github' : (${currentProvider == 'TIKTOK'} ? 'badge-tiktok' : 'badge-local')))"
+                  th:text="${currentProvider}">
+                LOCAL
+            </span>
+        </h1>
+        <p class="email" th:text="${email}">usuario@email.com</p>
+        
+        <div class="info-card">
+            <div class="info-row">
+                <span class="info-label">Nome:</span>
+                <span class="info-value" th:text="${name}">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Email:</span>
+                <span class="info-value" th:text="${email}">-</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Status:</span>
+                <span class="info-value">Autenticado</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Métodos de Login:</span>
+                <div class="providers-list">
+                    <span th:each="provider : ${providers}" 
+                          class="provider-badge"
+                          th:classappend="${provider == 'GOOGLE'} ? 'badge-google' : (${provider == 'FACEBOOK'} ? 'badge-facebook' : (${provider == 'GITHUB'} ? 'badge-github' : (${provider == 'TIKTOK'} ? 'badge-tiktok' : 'badge-local')))"
+                          th:text="${provider}">
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+        <form th:action="@{/logout}" method="post" style="display: inline;">
+            <button type="submit" class="btn btn-logout">Sair</button>
+        </form>
+    </div>
+</body>
+</html>
