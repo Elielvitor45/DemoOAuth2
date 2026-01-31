@@ -49,19 +49,20 @@ public class SecurityConfig {
         http
                 .authenticationProvider(authenticationProvider())
                 .csrf(csrf -> csrf
-                        .ignoringRequestMatchers("/api/**"))
+                        .ignoringRequestMatchers("/api/**", "/tiktok/**"))  // ✅ LIBERA CSRF PARA /tiktok/**
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
-                            new AntPathRequestMatcher("/"),
-                            new AntPathRequestMatcher("/login**"),
-                            new AntPathRequestMatcher("/register**"),
-                            new AntPathRequestMatcher("/api/register"),
-                            new AntPathRequestMatcher("/error"),
-                            new AntPathRequestMatcher("/css/**"),
-                            new AntPathRequestMatcher("/js/**"),
-                            new AntPathRequestMatcher("/oauth2/**"),
-                            new AntPathRequestMatcher("/oauth/tiktok"),
-                            new AntPathRequestMatcher("/auth/tiktok/callback/")
+                                new AntPathRequestMatcher("/"),
+                                new AntPathRequestMatcher("/login**"),
+                                new AntPathRequestMatcher("/register**"),
+                                new AntPathRequestMatcher("/api/register"),
+                                new AntPathRequestMatcher("/error"),
+                                new AntPathRequestMatcher("/css/**"),
+                                new AntPathRequestMatcher("/js/**"),
+                                new AntPathRequestMatcher("/oauth2/**"),
+                                new AntPathRequestMatcher("/oauth/tiktok"),
+                                new AntPathRequestMatcher("/auth/tiktok/callback/"),
+                                new AntPathRequestMatcher("/tiktok/**")  // ✅ LIBERA /tiktok/**
                         ).permitAll()
                         .anyRequest().authenticated())
                 .formLogin(form -> form

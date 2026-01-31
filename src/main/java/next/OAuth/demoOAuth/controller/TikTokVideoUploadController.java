@@ -37,39 +37,34 @@ public class TikTokVideoUploadController {
     public String showUploadPage(Principal principal, Model model) {
         System.out.println("===== Acessando /tiktok/upload =====");
         
-        if (principal == null) {
-            System.err.println("Principal é null - usuário não autenticado");
-            return "redirect:/login?error=not_authenticated";
+        if (principal == null || !principal.getName().startsWith("tiktok_")) {
+            model.addAttribute("error", "Login com TikTok necessário!");
+            model.addAttribute("uploadReady", false);
+            return "tiktok-upload";
         }
 
-        String email = principal.getName();
-        System.out.println("Email do usuário: " + email);
+        String openId = principal.getName().substring(7);
+        System.out.println("TikTok OpenID: " + openId);
         
-        Optional<User> userOpt = userService.findByEmail(email);
-        if (!userOpt.isPresent()) {
-            System.err.println("Usuário não encontrado no banco: " + email);
-            return "redirect:/login?error=user_not_found";
+        Optional<UserProvider> providerOpt = userProviderRepository
+            .findByProviderAndProviderId("TIKTOK", openId);
+        
+        if (!providerOpt.isPresent()) {
+            model.addAttribute("error", "Conta TikTok não encontrada!");
+            model.addAttribute("uploadReady", false);
+            return "tiktok-upload";
         }
 
-        User user = userOpt.get();
+        UserProvider provider = providerOpt.get();
+        User user = provider.getUser();
         
-        Optional<UserProvider> tiktokProvider = user.getProviders().stream()
-                .filter(p -> "TIKTOK".equals(p.getProvider()))
-                .findFirst();
-
-        if (!tiktokProvider.isPresent()) {
-            System.err.println("Usuário não tem TikTok vinculado");
-            return "redirect:/home?error=tiktok_not_linked";
-        }
-
-        UserProvider provider = tiktokProvider.get();
-        
-        System.out.println("✅ Usuário tem TikTok vinculado!");
-        System.out.println("Access Token: " + (provider.getAccessToken() != null ? "Presente" : "Ausente"));
-        System.out.println("Token expira em: " + provider.getTokenExpiresAt());
+        System.out.println("✅ Usuário TikTok pronto para upload!");
+        System.out.println("Nome: " + user.getName());
+        System.out.println("Access Token: " + (provider.getAccessToken() != null ? "OK" : "NULL"));
 
         model.addAttribute("userName", user.getName());
         model.addAttribute("hasValidToken", provider.getAccessToken() != null);
+        model.addAttribute("uploadReady", true);
 
         return "tiktok-upload";
     }
@@ -82,81 +77,50 @@ public class TikTokVideoUploadController {
             Principal principal,
             RedirectAttributes redirectAttributes
     ) {
-        System.out.println("===== Iniciando upload REAL de vídeo =====");
+        System.out.println("===== Iniciando UPLOAD REAL para TikTok =====");
         
-        if (principal == null) {
-            return "redirect:/login?error=not_authenticated";
+        if (principal == null || !principal.getName().startsWith("tiktok_")) {
+            redirectAttributes.addFlashAttribute("error", "Login TikTok necessário!");
+            return "redirect:/tiktok/upload";
         }
 
         if (videoFile.isEmpty()) {
-            redirectAttributes.addFlashAttribute("error", "Por favor, selecione um arquivo de vídeo");
-            return "redirect:/tiktok/upload";
-        }
-
-        if (videoFile.getSize() > 100 * 1024 * 1024) {
-            redirectAttributes.addFlashAttribute("error", "Arquivo muito grande! Tamanho máximo: 100MB");
-            return "redirect:/tiktok/upload";
-        }
-
-        String contentType = videoFile.getContentType();
-        if (contentType == null || !contentType.startsWith("video/")) {
-            redirectAttributes.addFlashAttribute("error", "Por favor, envie um arquivo de vídeo válido");
+            redirectAttributes.addFlashAttribute("error", "Selecione um vídeo!");
             return "redirect:/tiktok/upload";
         }
 
         try {
-            String email = principal.getName();
-            Optional<User> userOpt = userService.findByEmail(email);
-            
-            if (!userOpt.isPresent()) {
-                redirectAttributes.addFlashAttribute("error", "Usuário não encontrado");
+            String openId = principal.getName().substring(7);
+            Optional<UserProvider> providerOpt = userProviderRepository
+                .findByProviderAndProviderId("TIKTOK", openId);
+
+            if (!providerOpt.isPresent()) {
+                redirectAttributes.addFlashAttribute("error", "TikTok não vinculado!");
                 return "redirect:/tiktok/upload";
             }
 
-            User user = userOpt.get();
+            UserProvider provider = providerOpt.get();
+            String accessToken = provider.getAccessToken();
             
-            Optional<UserProvider> tiktokProvider = user.getProviders().stream()
-                    .filter(p -> "TIKTOK".equals(p.getProvider()))
-                    .findFirst();
-
-            if (!tiktokProvider.isPresent()) {
-                redirectAttributes.addFlashAttribute("error", "TikTok não está vinculado");
+            if (accessToken == null || accessToken.isEmpty()) {
+                redirectAttributes.addFlashAttribute("error", "Token inválido. Faça login novamente!");
                 return "redirect:/tiktok/upload";
             }
 
-            String accessToken = tiktokProvider.get().getAccessToken();
-            
-            if (accessToken == null) {
-                redirectAttributes.addFlashAttribute("error", "Token de acesso ausente. Faça login novamente no TikTok.");
-                return "redirect:/tiktok/upload";
-            }
-
-            System.out.println("Título: " + title);
-            System.out.println("Descrição: " + description);
-            System.out.println("Arquivo: " + videoFile.getOriginalFilename());
-            System.out.println("Tamanho: " + videoFile.getSize() + " bytes");
-
-            // ⭐ FAZER UPLOAD REAL PARA O TIKTOK
-            String publishId = tikTokVideoUploadService.uploadVideoToTikTok(accessToken, videoFile);
+            // ✅ USA INBOX ENDPOINT (sem 403)
+            String publishId = tikTokVideoUploadService.uploadVideoToTikTokInbox(
+                accessToken, videoFile, title, description);
 
             redirectAttributes.addFlashAttribute("success", 
-                "✅ Vídeo enviado para sua caixa de entrada no TikTok! Publish ID: " + publishId);
-            
-            return "redirect:/tiktok/upload";
+                "✅ Vídeo enviado para CAIXA DE ENTRADA! ID: " + publishId + 
+                " 📱 Abra TikTok → Notificações → Publicar");
 
         } catch (Exception e) {
-            System.err.println("Erro ao fazer upload: " + e.getMessage());
+            System.err.println("💥 Erro upload: " + e.getMessage());
             e.printStackTrace();
-            
-            String errorMsg = e.getMessage();
-            if (errorMsg != null && errorMsg.contains("401")) {
-                errorMsg = "Token expirado. Faça login novamente no TikTok!";
-            } else if (errorMsg != null && errorMsg.contains("403")) {
-                errorMsg = "Sem permissão. Verifique se tem o escopo 'video.upload'.";
-            }
-            
-            redirectAttributes.addFlashAttribute("error", "Erro: " + errorMsg);
-            return "redirect:/tiktok/upload";
+            redirectAttributes.addFlashAttribute("error", "Erro: " + e.getMessage());
         }
+        
+        return "redirect:/tiktok/upload";
     }
 }
