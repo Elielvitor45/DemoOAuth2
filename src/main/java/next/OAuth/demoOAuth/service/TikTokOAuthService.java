@@ -7,9 +7,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Map;
 
@@ -48,12 +47,18 @@ public class TikTokOAuthService {
     }
 
     public String buildAuthorizationUrl(String state) {
-        return authorizationUri +
-                "?client_key=" + clientKey +
-                "&response_type=code" +
-                "&scope=" + scope +
-                "&redirect_uri=" + redirectUri +
-                "&state=" + state;
+        try {
+            String encodedScope = java.net.URLEncoder.encode(scope, StandardCharsets.UTF_8);
+            
+            return authorizationUri +
+                    "?client_key=" + clientKey +
+                    "&response_type=code" +
+                    "&scope=" + encodedScope +
+                    "&redirect_uri=" + redirectUri +
+                    "&state=" + state;
+        } catch (Exception e) {
+            throw new RuntimeException("Erro ao construir URL", e);
+        }
     }
 
     public Map<String, Object> exchangeCodeForToken(String code) {
@@ -68,7 +73,6 @@ public class TikTokOAuthService {
             headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
             headers.set("Cache-Control", "no-cache");
 
-            // URL encode manual dos parâmetros
             String encodedBody = "client_key=" + java.net.URLEncoder.encode(clientKey, StandardCharsets.UTF_8) +
                     "&client_secret=" + java.net.URLEncoder.encode(clientSecret, StandardCharsets.UTF_8) +
                     "&code=" + java.net.URLEncoder.encode(code, StandardCharsets.UTF_8) +
@@ -108,29 +112,47 @@ public class TikTokOAuthService {
         }
     }
 
-    public Map<String, Object> getUserInfo(String accessToken) {
+    // ⭐ CORRIGIDO: GET com query params (SEM erro de variável)
+    public Map<String, Object> getUserInfo(String accessToken, String openId) {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(accessToken);
-            headers.setContentType(MediaType.APPLICATION_JSON);
 
-            String requestBody = "{\"fields\":[\"open_id\",\"union_id\",\"avatar_url\",\"display_name\"]}";
+            // ⭐ CORRETO: Query params na URL
+            String queryParams = "?fields=open_id,union_id,avatar_url,display_name";
+            String fullUrl = userInfoUri + queryParams;
+            
+            System.out.println("🔍 UserInfo GET URL: " + fullUrl);
 
-            HttpEntity<String> request = new HttpEntity<>(requestBody, headers);
+            HttpEntity<String> request = new HttpEntity<>(headers);
 
             ResponseEntity<String> response = restTemplate.exchange(
-                    userInfoUri,
-                    HttpMethod.POST,
+                    fullUrl,
+                    HttpMethod.GET,
                     request,
-                    String.class);
+                    String.class
+            );
 
-            System.out.println("===== TikTok UserInfo Response =====");
-            System.out.println(response.getBody());
+            System.out.println("✅ UserInfo Status: " + response.getStatusCode());
+            System.out.println("✅ UserInfo Response: " + response.getBody());
 
-            return objectMapper.readValue(response.getBody(), Map.class);
+            Map<String, Object> responseMap = objectMapper.readValue(response.getBody(), Map.class);
+            
+            // Verificar erro na resposta TikTok
+            if (responseMap.containsKey("error")) {
+                Map<String, Object> errorObj = (Map<String, Object>) responseMap.get("error");
+                if (errorObj != null && !"ok".equals(errorObj.get("code"))) {
+                    System.err.println("Erro na UserInfo API: " + errorObj.get("code") + " - " + errorObj.get("message"));
+                    return null;
+                }
+            }
+            
+            return responseMap;
+
         } catch (Exception e) {
-            System.err.println("Erro ao buscar userInfo: " + e.getMessage());
-            throw new RuntimeException("Erro ao buscar dados do usuário TikTok", e);
+            System.err.println("❌ Erro getUserInfo: " + e.getMessage());
+            e.printStackTrace();
+            return null; // Graceful degradation
         }
     }
 

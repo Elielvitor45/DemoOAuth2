@@ -12,31 +12,58 @@ import org.springframework.web.bind.annotation.GetMapping;
 
 import next.OAuth.demoOAuth.model.User;
 import next.OAuth.demoOAuth.model.UserProvider;
+import next.OAuth.demoOAuth.repository.UserProviderRepository;
 import next.OAuth.demoOAuth.repository.UserRepository;
+import next.OAuth.demoOAuth.service.UserService;
 
 import java.security.Principal;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import next.OAuth.demoOAuth.service.UserService;
-import java.util.List;
 
 @Controller
 public class ApiController {
+    
     @Autowired
     private UserRepository userRepository;
+    
+    @Autowired
+    private UserProviderRepository userProviderRepository;
+    
     @Autowired
     private UserService userService;
     
     @GetMapping("/home")
     public String home(Model model, Principal principal) {
         String name = "Usuário";
-        String email = "";
+        String displayEmail = "";
         String photoUrl = null;
         List<String> providers = new ArrayList<>();
         String currentProvider = "LOCAL";
 
-        if (principal instanceof OAuth2AuthenticationToken) {
+        if (principal.getName() != null && principal.getName().startsWith("tiktok_")) {
+            // ⭐ TIKTOK LOGIN
+            String openId = principal.getName().substring(7);
+            System.out.println("🔍 TikTok OpenID: " + openId);
+            
+            Optional<UserProvider> providerOpt = userProviderRepository
+                .findByProviderAndProviderId("TIKTOK", openId);
+                
+            if (providerOpt.isPresent()) {
+                UserProvider provider = providerOpt.get();
+                User user = provider.getUser();
+                
+                currentProvider = "TIKTOK";
+                providers.add("TIKTOK");
+                
+                name = user.getName() != null ? user.getName() : "TikTok User";
+                displayEmail = "@TikTok";
+                photoUrl = user.getPhotoUrl();
+            }
+            
+        } else if (principal instanceof OAuth2AuthenticationToken) {
+            // ⭐ GOOGLE/GITHUB/FACEBOOK
             OAuth2AuthenticationToken oauthToken = (OAuth2AuthenticationToken) principal;
             currentProvider = oauthToken.getAuthorizedClientRegistrationId().toUpperCase();
 
@@ -48,38 +75,53 @@ public class ApiController {
                 providerId = oidcUser.getSubject();
             } else if (principalObj instanceof OAuth2User) {
                 OAuth2User oauth2User = (OAuth2User) principalObj;
-                providerId = oauth2User.getAttribute("id") != null ? oauth2User.getAttribute("id").toString()
-                        : oauth2User.getAttribute("sub");
+                providerId = oauth2User.getAttribute("id") != null ? 
+                    oauth2User.getAttribute("id").toString() : oauth2User.getAttribute("sub");
             }
 
-            // Buscar usuário do banco
             Optional<User> userOpt = userService.findByProviderAndProviderId(currentProvider, providerId);
             if (userOpt.isPresent()) {
                 User user = userOpt.get();
-                email = user.getEmail();
+                displayEmail = user.getEmail() != null ? user.getEmail() : "";
                 name = user.getName();
                 photoUrl = user.getPhotoUrl();
 
-                // Buscar todos os provedores vinculados
                 providers = user.getProviders().stream()
-                        .map(UserProvider::getProvider)
-                        .collect(Collectors.toList());
+                    .map(UserProvider::getProvider)
+                    .collect(Collectors.toList());
             }
+            
         } else {
-            email = principal.getName();
+            // ⭐ LOGIN LOCAL
+            String email = principal.getName();
             Optional<User> userOpt = userService.findByEmail(email);
             if (userOpt.isPresent()) {
                 User user = userOpt.get();
                 name = user.getName();
                 photoUrl = user.getPhotoUrl();
+                displayEmail = email;
+                
                 providers = user.getProviders().stream()
-                        .map(UserProvider::getProvider)
-                        .collect(Collectors.toList());
+                    .map(UserProvider::getProvider)
+                    .collect(Collectors.toList());
+                
+                if (providers.contains("LOCAL")) {
+                    currentProvider = "LOCAL";
+                }
             }
         }
 
+        // DEBUG
+        System.out.println("===== DEBUG HOME =====");
+        System.out.println("Name: " + name);
+        System.out.println("Email: " + displayEmail);
+        System.out.println("Photo: " + photoUrl);
+        System.out.println("Provider: " + currentProvider);
+        System.out.println("Providers: " + providers);
+        System.out.println("=====================");
+
         model.addAttribute("name", name);
-        model.addAttribute("email", email);
+        model.addAttribute("email", displayEmail);
         model.addAttribute("photoUrl", photoUrl);
         model.addAttribute("currentProvider", currentProvider);
         model.addAttribute("providers", providers);

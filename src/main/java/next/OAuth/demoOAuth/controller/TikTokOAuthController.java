@@ -19,6 +19,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -84,7 +85,7 @@ public class TikTokOAuthController {
         }
 
         try {
-            // Troca o code pelo token
+            // 1. Troca o code pelo token
             Map<String, Object> tokenResponse = tikTokOAuthService.exchangeCodeForToken(code);
 
             String accessToken = (String) tokenResponse.get("access_token");
@@ -97,10 +98,43 @@ public class TikTokOAuthController {
                 return "redirect:/login?error=tiktok_invalid_response";
             }
 
-            System.out.println("===== Tokens obtidos com sucesso =====");
+            System.out.println("===== Tokens obtidos com sucesso! =====");
             System.out.println("Open ID: " + openId);
+            System.out.println("Scopes: " + tokenResponse.get("scope"));
 
-            // Buscar ou criar usuário no banco
+            // 2. ⭐ BUSCAR DADOS DINÂMICOS DO USUÁRIO
+            Map<String, Object> userInfo = tikTokOAuthService.getUserInfo(accessToken, openId);
+            String displayName = "TikTok User";
+            String avatarUrl = null;
+            String username = null;
+
+            if (userInfo != null) {
+                try {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> data = (Map<String, Object>) userInfo.get("data");
+                    if (data != null) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> userData = (Map<String, Object>) data.get("user");
+                        if (userData != null) {
+                            displayName = (String) userData.get("display_name");
+                            avatarUrl = (String) userData.get("avatar_url");
+                            username = (String) userData.get("username");
+                            
+                            System.out.println("🎉 DADOS DINÂMICOS:");
+                            System.out.println("Display Name: " + displayName);
+                            System.out.println("Username: " + username);
+                            System.out.println("Avatar URL: " + avatarUrl);
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Erro ao parsear userInfo: " + e.getMessage());
+                }
+            } else {
+                System.out.println("⚠️ getUserInfo retornou null - usando dados básicos");
+                displayName = "TikTok User - " + openId.substring(0, 8);
+            }
+
+            // 3. Buscar ou criar usuário no banco
             Optional<UserProvider> existingProvider = userProviderRepository
                     .findByProviderAndProviderId("TIKTOK", openId);
 
@@ -108,26 +142,26 @@ public class TikTokOAuthController {
             UserProvider userProvider;
 
             if (existingProvider.isPresent()) {
-                // Usuário já existe
-                System.out.println("Usuário TikTok já existe no banco!");
+                // Usuário já existe - ATUALIZAR dados
+                System.out.println("👤 Usuário TikTok já existe no banco!");
                 userProvider = existingProvider.get();
                 user = userProvider.getUser();
 
-                // Atualizar tokens
-                userProvider.setAccessToken(accessToken);
-                userProvider.setRefreshToken(refreshToken);
-                userProvider.setTokenExpiresAt(tikTokOAuthService.calculateTokenExpiration(expiresIn));
-                userProvider.setLastUsedAt(LocalDateTime.now());
-                userProviderRepository.save(userProvider);
+                // Atualizar dados dinâmicos
+                user.setName(displayName);
+                if (avatarUrl != null) {
+                    user.setPhotoUrl(avatarUrl);
+                }
+                userRepository.save(user);
 
             } else {
                 // Criar novo usuário
-                System.out.println("Criando novo usuário TikTok...");
+                System.out.println("🆕 Criando novo usuário TikTok...");
                 
                 user = new User();
-                user.setName("TikTok User " + openId.substring(0, 8));
-                user.setEmail(openId + "@tiktok.user"); // Email fictício
-                user.setPhotoUrl(null);
+                user.setName(displayName);
+                user.setEmail(null); // NULL conforme pedido
+                user.setPhotoUrl(avatarUrl);
                 user = userRepository.save(user);
 
                 // Criar UserProvider
@@ -140,35 +174,39 @@ public class TikTokOAuthController {
                 userProvider.setTokenExpiresAt(tikTokOAuthService.calculateTokenExpiration(expiresIn));
                 userProviderRepository.save(userProvider);
 
-                System.out.println("Usuário criado com ID: " + user.getId());
+                System.out.println("✅ Usuário criado com ID: " + user.getId());
             }
 
-            // ⭐ AUTENTICAR NO SPRING SECURITY
+            // 4. SEMPRE atualizar tokens
+            userProvider.setAccessToken(accessToken);
+            userProvider.setRefreshToken(refreshToken);
+            userProvider.setTokenExpiresAt(tikTokOAuthService.calculateTokenExpiration(expiresIn));
+            userProvider.setLastUsedAt(LocalDateTime.now());
+            userProviderRepository.save(userProvider);
+
+            // 5. AUTENTICAR NO SPRING SECURITY
             Authentication authentication = new UsernamePasswordAuthenticationToken(
-                    user.getEmail(),
+                    "tiktok_" + openId, // Identificador único e dinâmico
                     null,
                     Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"))
             );
 
-            // Define no contexto
             SecurityContextHolder.getContext().setAuthentication(authentication);
-
-            // ⭐ SALVAR NA SESSÃO HTTP (CRUCIAL!)
             session.setAttribute(
                     HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
                     SecurityContextHolder.getContext()
             );
 
-            System.out.println("===== Usuário autenticado no Spring Security! =====");
-            System.out.println("Email: " + user.getEmail());
-            System.out.println("Authenticated: " + authentication.isAuthenticated());
-            System.out.println("Authorities: " + authentication.getAuthorities());
+            System.out.println("🎉 ===== USUÁRIO AUTENTICADO COM SUCESSO! =====");
+            System.out.println("Nome: " + user.getName());
+            System.out.println("Username: " + username);
+            System.out.println("OpenID: " + openId);
             System.out.println("Redirecionando para /home");
 
             return "redirect:/home";
 
         } catch (Exception e) {
-            System.err.println("Erro no callback TikTok: " + e.getMessage());
+            System.err.println("💥 Erro no callback TikTok: " + e.getMessage());
             e.printStackTrace();
             return "redirect:/login?error=tiktok_callback_failed";
         }
