@@ -49,7 +49,9 @@ public class SecurityConfig {
         http
                 .authenticationProvider(authenticationProvider())
                 .csrf(csrf -> csrf
-                        .ignoringRequestMatchers("/api/**", "/tiktok/**"))  // ✅ LIBERA CSRF PARA /tiktok/**
+                        .ignoringRequestMatchers(
+                                new AntPathRequestMatcher("/api/**"),
+                                new AntPathRequestMatcher("/tiktok/**")))  // ✅ LIBERA CSRF PARA /tiktok/**
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 new AntPathRequestMatcher("/"),

@@ -1,6 +1,6 @@
 package next.OAuth.demoOAuth.controller;
 
-import jakarta.servlet.http.HttpSession;
+import javax.servlet.http.HttpSession;
 import next.OAuth.demoOAuth.model.User;
 import next.OAuth.demoOAuth.model.UserProvider;
 import next.OAuth.demoOAuth.repository.UserProviderRepository;

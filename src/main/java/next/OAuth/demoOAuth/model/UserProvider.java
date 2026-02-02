@@ -1,6 +1,6 @@
 package next.OAuth.demoOAuth.model;
 
-import jakarta.persistence.*;
+import javax.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
